@@ -2,16 +2,17 @@ import streamlit as st
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
-from PIL import Image
-import pytesseract
+import streamlit.components.v1 as components
 
 # Colores
 COLOR_VERDE = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
 COLOR_MORADO = PatternFill(start_color="800080", end_color="800080", fill_type="solid")
 
+st.set_page_config(page_title="Inventario Biblioteca", layout="centered")
 st.title("📚 Inventario Biblioteca")
-st.write("Escanea el texto debajo del código de barras usando la cámara del celular y actualiza el inventario.")
+st.write("Escanea códigos automáticamente con la cámara y actualiza el inventario.")
 
+# Subir archivo Excel
 uploaded_file = st.file_uploader("Sube tu archivo Excel del inventario", type=["xlsx"])
 if uploaded_file:
     excel_path = "inventario.xlsx"
@@ -34,17 +35,49 @@ if uploaded_file:
     else:
         codigo_a_fila = {str(row[codigo_columna]): idx+2 for idx, row in df.iterrows()}
 
-        st.subheader("Escanea el texto debajo del código de barras")
-        img_file = st.camera_input("Toma una foto del código")
+        st.subheader("Escanea el código automáticamente")
+        # Componente QuaggaJS
+        components.html(
+            """
+            <div id="interactive" class="viewport" style="width:100%; height:300px;"></div>
+            https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js
+            <script>
+            const config = {
+                inputStream: {
+                    type: "LiveStream",
+                    constraints: {
+                        facingMode: "environment" // cámara trasera
+                    },
+                    target: document.querySelector('#interactive')
+                },
+                decoder: {
+                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "upc_reader"]
+                }
+            };
 
-        if img_file:
-            img = Image.open(img_file)
-            texto_detectado = pytesseract.image_to_string(img).strip()
+            Quagga.init(config, function(err) {
+                if (err) {
+                    console.log(err);
+                    return;
+                }
+                Quagga.start();
+            });
 
-            if texto_detectado:
-                codigo = texto_detectado.split("\n")[0].strip()
-                st.write(f"✅ Texto detectado: **{codigo}**")
+            Quagga.onDetected(function(result) {
+                const code = result.codeResult.code;
+                window.parent.postMessage({type: 'barcode', value: code}, '*');
+            });
+            </script>
+            """,
+            height=350,
+        )
 
+        # Campo manual opcional
+        codigo_manual = st.text_input("Ingresa el código manualmente (opcional)")
+
+        if st.button("Actualizar Inventario"):
+            if codigo_manual.strip() != "":
+                codigo = codigo_manual.strip()
                 if codigo in codigo_a_fila:
                     fila = codigo_a_fila[codigo]
                     celda = f"A{fila}"
@@ -60,7 +93,7 @@ if uploaded_file:
 
                 wb.save(excel_path)
             else:
-                st.error("No se detectó texto en la imagen.")
+                st.error("Por favor, escanea o ingresa el código manualmente.")
 
         st.subheader("Inventario actualizado")
         st.dataframe(pd.read_excel(excel_path))
