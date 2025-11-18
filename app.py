@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
-import streamlit.components.v1 as components
-from streamlit_javascript import st_javascript
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from pyzbar.pyzbar import decode
+import av
+from PIL import Image
 import os
 from openpyxl import Workbook
 
@@ -47,52 +49,29 @@ if not codigo_columna:
 else:
     codigo_a_fila = {str(row[codigo_columna]): idx+2 for idx, row in df.iterrows()}
 
-    st.subheader("Escanea el código automáticamente")
+    st.subheader("Escanea el código con la cámara")
 
-    # Componente QuaggaJS con permisos de cámara
-    components.html(
-        """
-        <iframe id="scanner-frame" style="width:100%; height:350px;" allow="camera">
-            <div id="interactive" class="viewport" style="width:100%; height:300px;"></div>
-            <script srcjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js
-            <script>
-            const config = {
-                inputStream: {
-                    type: "LiveStream",
-                    constraints: {
-                        facingMode: "environment"
-                    },
-                    target: document.querySelector('#interactive')
-                },
-                decoder: {
-                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "upc_reader"]
-                }
-            };
+    class BarcodeScanner(VideoTransformerBase):
+        def __init__(self):
+            self.last_code = None
 
-            Quagga.init(config, function(err) {
-                if (err) {
-                    console.log(err);
-                    return;
-                }
-                Quagga.start();
-            });
+        def transform(self, frame):
+            img = frame.to_image()
+            decoded_objects = decode(img)
+            for obj in decoded_objects:
+                self.last_code = obj.data.decode("utf-8")
+            return frame
 
-            Quagga.onDetected(function(result) {
-                const code = result.codeResult.code;
-                window.parent.postMessage({type: 'barcode', value: code}, '*');
-            });
-            </script>
-        </iframe>
-        """,
-        height=400,
-    )
+    ctx = webrtc_streamer(key="barcode", video_transformer_factory=BarcodeScanner)
 
-    # Capturar código detectado
-    barcode = st_javascript("await new Promise(resolve => {window.addEventListener('message', e => {if(e.data.type==='barcode'){resolve(e.data.value)}})})")
-    if barcode:
-        st.success(f"Código detectado: {barcode}")
+    codigo_detectado = None
+    if ctx.video_transformer:
+        codigo_detectado = ctx.video_transformer.last_code
 
-    codigo_manual = st.text_input("Ingresa el código manualmente (opcional)", value=barcode if barcode else "")
+    if codigo_detectado:
+        st.success(f"Código detectado: {codigo_detectado}")
+
+    codigo_manual = st.text_input("Ingresa el código manualmente (opcional)", value=codigo_detectado if codigo_detectado else "")
 
     if st.button("Actualizar Inventario"):
         if codigo_manual.strip() != "":
