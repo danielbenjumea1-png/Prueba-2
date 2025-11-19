@@ -2,6 +2,5 @@ streamlit
 pandas
 openpyxl
 streamlit-webrtc
-pyzbar
-Pillow
+opencv-python
 av
