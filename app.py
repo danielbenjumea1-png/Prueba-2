@@ -3,11 +3,11 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
-from pyzbar.pyzbar import decode
+import cv2
+import numpy as np
 import av
-from PIL import Image
-import os
 from openpyxl import Workbook
+import os
 
 # Colores
 COLOR_VERDE = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
@@ -54,13 +54,14 @@ else:
     class BarcodeScanner(VideoTransformerBase):
         def __init__(self):
             self.last_code = None
+            self.detector = cv2.barcode_BarcodeDetector()
 
         def transform(self, frame):
-            img = frame.to_image()
-            decoded_objects = decode(img)
-            for obj in decoded_objects:
-                self.last_code = obj.data.decode("utf-8")
-            return frame
+            img = frame.to_ndarray(format="bgr24")
+            ok, decoded_info, _, _ = self.detector.detectAndDecode(img)
+            if ok and decoded_info:
+                self.last_code = decoded_info[0]
+            return av.VideoFrame.from_ndarray(img, format="bgr24")
 
     ctx = webrtc_streamer(key="barcode", video_transformer_factory=BarcodeScanner)
 
