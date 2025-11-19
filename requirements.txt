@@ -1,6 +1,4 @@
 streamlit
 pandas
 openpyxl
-streamlit-webrtc
-opencv-python
-av
+streamlit-javascript
